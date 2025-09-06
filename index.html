@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Календарь записи волонтёров</title>
+
+<!-- Ваши иконки -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="shortcut icon" href="/favicon.ico">
+<meta name="theme-color" content="#ffffff">
+
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --text:#0f172a; --muted:#6b7280;
+  --accent:#16a34a; --accent-contrast:#fff;
+  --ok-bg:#dcfce7; --ok:#166534; --err-bg:#fee2e2; --err:#991b1b;
+  --border:#e5e7eb; --radius:14px; --shadow:0 6px 24px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+.container{max-width:1100px;margin:0 auto;padding:16px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px}
+h1{margin:0;font-size:20px}
+.small{font-size:13px;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px}
+.table-wrap{overflow:auto}
+.grid{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+.grid th,.grid td{border:1px solid var(--border);padding:8px 10px;white-space:nowrap}
+.grid th{position:sticky;top:0;background:#fafafa;font-weight:700}
+.role{position:sticky;left:0;background:#fafafa;font-weight:600}
+.cell-free{background:#f8fff9}
+.cell-busy{background:#fafafa;color:#555}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-contrast);font-weight:700;cursor:pointer}
+.btn.secondary{background:transparent;color:var(--accent)}
+.btn[disabled]{opacity:.6;cursor:not-allowed}
+.toast-wrap{position:fixed;left:0;right:0;top:12px;display:flex;justify-content:center;pointer-events:none;z-index:999}
+.toast{pointer-events:auto;max-width:640px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;font-weight:600;opacity:0;transform:translateY(-10px);transition:.18s}
+.toast.show{opacity:1;transform:none}
+.toast.err{background:var(--err-bg);color:#991b1b;border-color:#fecaca}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;padding:16px;z-index:998}
+.modal{max-width:520px;width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:16px}
+.field{margin-top:10px}
+label{display:block;margin-bottom:6px}
+select,textarea,input[type=text],input[type=checkbox]{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:16px;min-height:44px}
+input[type=checkbox]{width:auto;min-height:auto;transform:translateY(1px)}
+textarea{min-height:84px;resize:vertical}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>div{flex:1 1 240px}
+.footer-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+.hint{color:var(--muted);font-size:13px;margin-top:6px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-weight:700;font-size:12px}
+.confirm{display:flex;align-items:center;gap:10px;margin-top:8px}
+@media (max-width:640px){ .grid th,.grid td{padding:8px} }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Календарь записи волонтёров</h1>
+    <div class="small" id="updatedAt"></div>
+  </div>
+
+  <div class="card table-wrap">
+    <table class="grid" id="cal"></table>
+  </div>
+
+  <p class="small">Свободные ячейки можно бронировать. Перед отправкой отметьте «Я — &lt;Имя&gt;» для снижения ошибок.</p>
+</div>
+
+<div class="toast-wrap"><div id="toast" class="toast"><span id="toastText"></span></div></div>
+
+<div class="modal-back" id="modalBack" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="modal">
+    <h3 id="mTitle" style="margin:0 0 6px">Бронирование</h3>
+    <div class="row">
+      <div class="field">
+        <label>Дата</label>
+        <input id="mDate" type="text" readonly>
+      </div>
+      <div class="field">
+        <label>Роль</label>
+        <input id="mRole" type="text" readonly>
+      </div>
+    </div>
+    <div class="field">
+      <label for="mName">Ваше имя</label>
+      <select id="mName"></select>
+      <div class="confirm">
+        <input type="checkbox" id="mConfirm">
+        <label for="mConfirm" id="mConfirmLabel" style="margin:0">Я — ...</label>
+      </div>
+      <div class="hint">Пока галочка не отмечена — кнопку «Записаться» нажать нельзя.</div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="mNotify" style="width:auto;min-height:auto"> Хочу получать уведомления в Telegram</label>
+      <div class="hint" id="notifyHint"></div>
+      <div style="margin-top:8px">
+        <button class="btn secondary" id="btnConnectBot" style="display:none">Подключить бота</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="mComment">Комментарий <span class="hint">(необязательно)</span></label>
+      <textarea id="mComment" placeholder="Например: приду на 30 мин раньше"></textarea>
+    </div>
+    <div class="footer-actions">
+      <button class="btn secondary" id="btnCancel">Отмена</button>
+      <button class="btn" id="btnBook" disabled>Записаться</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== НАСТРОЙКИ (ЗАПОЛНИТЕ) =====
+const GAS_EXEC_URL = 'https://script.google.com/macros/s/AKfycbzSK4yKGfPDo2QiCJYvg0PJGfpK69jcflgdHM7KkUhruSyLh-wE9_9mrtRCj0Gknx6j6Q/exec';
+const GAS_KEY      = 'F4Lsmolensk_9f3b2c1d7a6e41ab';
+
+// ===== DOM =====
+const $ = (id)=>document.getElementById(id);
+const cal = $('cal'); const updatedAt = $('updatedAt');
+const toast = $('toast'), toastText = $('toastText');
+const modalBack = $('modalBack');
+const mDate=$('mDate'), mRole=$('mRole'), mName=$('mName'), mComment=$('mComment'), mNotify=$('mNotify');
+const mConfirm=$('mConfirm'), mConfirmLabel=$('mConfirmLabel'), notifyHint=$('notifyHint'), btnConnectBot=$('btnConnectBot');
+const btnCancel=$('btnCancel'), btnBook=$('btnBook');
+
+function showToast(msg, err=false){
+  toastText.textContent = msg || '';
+  toast.className = 'toast' + (err?' err':'');
+  toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'), 3000);
+}
+
+// === API ===
+async function apiGetAvailability(){
+  const url = `${GAS_EXEC_URL}?api=availability&k=${encodeURIComponent(GAS_KEY)}`;
+  const r = await fetch(url, {method:'GET'});
+  return r.json();
+}
+async function apiGetInit(){
+  const url = `${GAS_EXEC_URL}?api=getInit&k=${encodeURIComponent(GAS_KEY)}`;
+  const r = await fetch(url, {method:'GET'});
+  return r.json();
+}
+async function apiIsLinked(name){
+  const url = `${GAS_EXEC_URL}?api=isLinked&k=${encodeURIComponent(GAS_KEY)}&name=${encodeURIComponent(name||'')}`;
+  const r = await fetch(url, {method:'GET'});
+  return r.json();
+}
+async function apiBook(payload){
+  const url = `${GAS_EXEC_URL}?api=book&k=${encodeURIComponent(GAS_KEY)}`;
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=UTF-8'}, body: JSON.stringify(payload||{})});
+  return r.json();
+}
+
+// === helpers ===
+function b64url(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function openTelegramStart(botLink, name){
+  if (!botLink) return;
+  const domain = (botLink.match(/t\.me\/([^/?#]+)/i)||[])[1] || '';
+  const payload = 'b64_' + b64url(name||'');
+  // 1) пробуем открыть приложение
+  if (domain){
+    const tgDeep = `tg://resolve?domain=${domain}&start=${payload}`;
+    window.location.href = tgDeep;
+    // 2) на всякий случай fallback в веб через 600 мс
+    setTimeout(()=>{ window.open(`${botLink}?start=${payload}`,'_blank','noopener'); }, 600);
+  } else {
+    window.open(`${botLink}?start=${payload}`,'_blank','noopener');
+  }
+}
+
+// === РЕНДЕР ТАБЛИЦЫ ===
+let AV=null, INIT=null;
+function renderTable(){
+  if (!AV) return;
+  const { roles=[], dates=[], occupants=[], generatedAt } = AV;
+
+  // Хедер — только одна строка с датой (как в Google Sheets)
+  let html = '<thead><tr><th class="role">Роль</th>';
+  for (const d of dates){ html += `<th>${d.label}</th>`; }
+  html += '</tr></thead><tbody>';
+
+  // Строки
+  for (let r=0;r<roles.length;r++){
+    html += `<tr><th class="role">${roles[r]}</th>`;
+    for (let d=0; d<dates.length; d++){
+      const name = (occupants[r] && occupants[r][d]) ? String(occupants[r][d]) : '';
+      if (name){
+        html += `<td class="cell-busy"><span class="badge">${name}</span></td>`;
+      } else {
+        html += `<td class="cell-free"><button class="btn" data-r="${r}" data-d="${d}">Выбрать</button></td>`;
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  cal.innerHTML = html;
+
+  // «Обновлено» — сервер уже присылает в dd.MM.yyyy HH:mm
+  updatedAt.textContent = generatedAt ? ('Обновлено: ' + generatedAt) : '';
+
+  // Навешиваем клики
+  cal.querySelectorAll('button[data-r]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const r = +btn.getAttribute('data-r');
+      const d = +btn.getAttribute('data-d');
+      openModal(roles[r], dates[d]);
+    });
+  });
+}
+
+// === МОДАЛКА ===
+let curDate=null, curRole=null;
+function fillNames(names){
+  mName.innerHTML = '<option value="">— выберите —</option>' + (names||[]).map(n=>`<option>${String(n||'')}</option>`).join('');
+}
+function syncConfirm(){
+  const n = (mName.value||'').trim();
+  mConfirm.checked = false;
+  mConfirmLabel.textContent = n ? `Я — ${n}` : 'Я — ...';
+  btnBook.disabled = !(n && mConfirm.checked);
+}
+async function refreshNotifyUi(){
+  notifyHint.textContent = '';
+  btnConnectBot.style.display = 'none';
+  const n = (mName.value||'').trim();
+  if (!n){
+    mNotify.checked = false;
+    return;
+  }
+  try{
+    const st = await apiIsLinked(n);
+    if (st && st.ok){
+      // отражаем сохранённое предпочтение, но не «насильно» включаем
+      mNotify.checked = !!st.notify;
+      if (st.linked){
+        notifyHint.textContent = 'Бот подключён — уведомления придут.';
+      } else {
+        notifyHint.textContent = 'Бот ещё не подключён. Нажмите «Подключить бота», затем — Start в Telegram.';
+        btnConnectBot.style.display = 'inline-flex';
+      }
+    }
+  }catch(_){}
+}
+function openModal(role, dateObj){
+  curRole = role;
+  curDate = dateObj;
+  mRole.value = role || '';
+  mDate.value = dateObj?.label || '';
+  mComment.value = '';
+  mNotify.checked = false;
+  mName.value = '';
+  notifyHint.textContent = '';
+  btnConnectBot.style.display = 'none';
+  syncConfirm();
+  modalBack.style.display = 'flex';
+}
+function closeModal(){ modalBack.style.display = 'none'; }
+
+mName.addEventListener('change', ()=>{ syncConfirm(); refreshNotifyUi(); });
+mConfirm.addEventListener('change', ()=>{ btnBook.disabled = !((mName.value||'').trim() && mConfirm.checked); });
+btnConnectBot.addEventListener('click', ()=>{
+  const n = (mName.value||'').trim();
+  const bot = (INIT && INIT.botLink) ? INIT.botLink : '';
+  if (bot && n) openTelegramStart(bot, n);
+});
+
+// === ИНИТ ===
+(async function(){
+  try{
+    const [av, init] = await Promise.all([apiGetAvailability(), apiGetInit()]);
+    AV=av && av.ok ? av : { ok:false, roles:[], dates:[], occupants:[] };
+    INIT=init && init.ok ? init : { ok:false, names:[], botLink:'' };
+    renderTable();
+    fillNames(INIT.names||[]);
+  }catch(e){
+    showToast('Не удалось загрузить календарь.', true);
+  }
+})();
+
+// Кнопки модалки
+btnCancel.addEventListener('click', closeModal);
+btnBook.addEventListener('click', async ()=>{
+  const name = (mName.value||'').trim();
+  const comment = (mComment.value||'').trim();
+  const notify = !!mNotify.checked;
+  if (!curDate || !curRole || !name || !mConfirm.checked){
+    showToast('Выберите имя и отметьте «Я — <Имя>».', true); return;
+  }
+  const payload = { name, role:curRole, dateCol:Number(curDate.col), comment, notify };
+  btnBook.disabled = true;
+  try{
+    const res = await apiBook(payload);
+    btnBook.disabled = false;
+    if (res && res.ok){
+      showToast(res.msg || 'Готово!');
+      closeModal();
+      // Перезагрузим сетку
+      const av = await apiGetAvailability();
+      AV = (av && av.ok) ? av : AV;
+      renderTable();
+    } else {
+      showToast(res?.msg || 'Не удалось записаться.', true);
+    }
+  }catch(e){
+    btnBook.disabled = false;
+    showToast('Ошибка сети. Попробуйте ещё раз.', true);
+  }
+});
+</script>
+</body>
+</html>
